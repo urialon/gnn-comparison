@@ -4,6 +4,8 @@ from torch.nn import BatchNorm1d
 from torch.nn import Sequential, Linear, ReLU
 from torch_geometric.nn import GINConv, global_add_pool, global_mean_pool
 
+from models.graph_classifiers.self_attention import SelfAttention
+
 
 class GIN(torch.nn.Module):
 
@@ -47,6 +49,7 @@ class GIN(torch.nn.Module):
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
         self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
+        self.selfatt = SelfAttention(num_heads=8, model_dim=dim_target, dropout_keep_prob=1-self.dropout)
 
     def forward(self, data):
         # Implement Equation 4.2 of the paper i.e. concat all layers' graph representations and apply linear model
@@ -70,4 +73,5 @@ class GIN(torch.nn.Module):
                 x = self.convs[layer-1](x, edge_index)
                 out += F.dropout(self.linears[layer](pooling(x, batch)), p=self.dropout, training=self.training)
 
+        out = self.selfatt(out)
         return out
