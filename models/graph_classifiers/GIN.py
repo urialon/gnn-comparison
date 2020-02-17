@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import BatchNorm1d
 from torch.nn import Sequential, Linear, ReLU
+import torch_geometric
 from torch_geometric.nn import GINConv, global_add_pool, global_mean_pool
 
 from models.graph_classifiers.self_attention import SelfAttention
@@ -73,5 +74,8 @@ class GIN(torch.nn.Module):
                 x = self.convs[layer-1](x, edge_index)
                 out += F.dropout(self.linears[layer](pooling(x, batch)), p=self.dropout, training=self.training)
 
-        out = self.selfatt(out)
+        dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+        dense_x = self.selfatt(dense_x, attn_mask=valid_mask.float())
+        gathered_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+        out += F.dropout(pooling(gathered_x, batch), p=self.dropout, training=self.training)
         return out
