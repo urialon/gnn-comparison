@@ -50,7 +50,8 @@ class GIN(torch.nn.Module):
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
         self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
-        self.selfatt = SelfAttention(num_heads=8, model_dim=dim_target, dropout_keep_prob=1-self.dropout)
+        self.selfatt = SelfAttention(num_heads=8, model_dim=out_emb_dim, dropout_keep_prob=1-self.dropout)
+        self.selfatt_linear = Linear(out_emb_dim, dim_target)
 
     def forward(self, data):
         # Implement Equation 4.2 of the paper i.e. concat all layers' graph representations and apply linear model
@@ -77,5 +78,6 @@ class GIN(torch.nn.Module):
         dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
         dense_x = self.selfatt(dense_x, attn_mask=valid_mask.float())
         gathered_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-        out += F.dropout(pooling(gathered_x, batch), p=self.dropout, training=self.training)
+        
+        out += F.dropout(self.selfatt_linear(pooling(gathered_x, batch)), p=self.dropout, training=self.training)
         return out
