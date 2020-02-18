@@ -81,7 +81,7 @@ class GIN(torch.nn.Module):
                 if self.ga_heads > 0 and self.ga_every_layer is True:
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
-                    x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+                    x += torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
                 out += F.dropout(pooling(self.linears[layer](x), batch), p=self.dropout)
             else:
                 # Layer l ("convolution" layer)
@@ -89,7 +89,7 @@ class GIN(torch.nn.Module):
                 if self.ga_heads > 0 and self.ga_every_layer is True:
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
-                    x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+                    x += torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
                 out += F.dropout(self.linears[layer](pooling(x, batch)), p=self.dropout, training=self.training)
 
         if self.ga_heads > 0 and self.ga_every_layer is False:
