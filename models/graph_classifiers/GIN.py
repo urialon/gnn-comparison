@@ -21,6 +21,8 @@ class GIN(torch.nn.Module):
         self.nns = []
         self.convs = []
         self.linears = []
+        self.ga_heads = config['ga_heads']
+        self.ga_every_layer = config['ga_every_layer']
 
         train_eps = config['train_eps']
 
@@ -50,8 +52,15 @@ class GIN(torch.nn.Module):
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
         self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
-        self.selfatt = SelfAttention(num_heads=8, model_dim=out_emb_dim, dropout_keep_prob=1-self.dropout)
-        self.selfatt_linear = Linear(out_emb_dim, dim_target)
+        if self.ga_heads > 0:
+            print('Creating GIN model with {} GA heads'.format(self.ga_heads))
+            if self.ga_every_layer:
+                print('Performing GA every layer')
+                self.selfatt = [SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
+                                             dropout_keep_prob=1 - self.dropout) for _ in range(len(self.embeddings_dim))]
+            else:
+                self.selfatt = SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim, dropout_keep_prob=1-self.dropout)
+                self.selfatt_linear = Linear(out_emb_dim, dim_target)
 
     def forward(self, data):
         # Implement Equation 4.2 of the paper i.e. concat all layers' graph representations and apply linear model
@@ -69,15 +78,23 @@ class GIN(torch.nn.Module):
             # print(f'Forward: layer {l}')
             if layer == 0:
                 x = self.first_h(x)
+                if self.ga_heads > 0 and self.ga_every_layer is True:
+                    dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+                    dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
+                    x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
                 out += F.dropout(pooling(self.linears[layer](x), batch), p=self.dropout)
             else:
                 # Layer l ("convolution" layer)
                 x = self.convs[layer-1](x, edge_index)
+                if self.ga_heads > 0 and self.ga_every_layer is True:
+                    dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+                    dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
+                    x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
                 out += F.dropout(self.linears[layer](pooling(x, batch)), p=self.dropout, training=self.training)
 
-        dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
-        dense_x = self.selfatt(dense_x, attn_mask=valid_mask.float())
-        gathered_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-        
-        out += F.dropout(self.selfatt_linear(pooling(gathered_x, batch)), p=self.dropout, training=self.training)
+        if self.ga_heads > 0 and self.ga_every_layer is False:
+            dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+            dense_x = self.selfatt(dense_x, attn_mask=valid_mask.float())
+            gathered_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+            out += F.dropout(self.selfatt_linear(pooling(gathered_x, batch)), p=self.dropout, training=self.training)
         return out

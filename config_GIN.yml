@@ -2,6 +2,10 @@ model:
   - GIN
 device:
   - cpu
+ga_heads:
+  - 1
+ga_every_layer:
+  - false
 batch_size:
   - 32
   - 128
