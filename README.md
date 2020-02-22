@@ -2,25 +2,23 @@
 
 ## Summary
 
-TBD
-
-## This repo
-
 The library includes data and scripts to reproduce the experiments reported in the paper.
 
 This research software is provided as is. If you happen to use or modify this code, please remember to cite the paper:
 
-[*Federico Errica and Marco Podda, Davide Bacciu, Alessio Micheli: A Fair Comparison of Graph Neural Networks for Graph Classification. Proceedings of the 8th International Conference on Learning Representations.*](https://openreview.net/forum?id=HygDF6NFPB)
+[*Federico Errica and Marco Podda, Davide Bacciu, Alessio Micheli: A Fair Comparison of Graph Neural Networks for Graph Classification. Proceedings of the 8th International Conference on Learning Representations (ICLR 2020).*](https://openreview.net/pdf?id=HygDF6NFPB)
 
 ### Instructions
 
 To reproduce the experiments, first preprocess datasets as follows:
 
 `python PrepareDatasets.py DATA/CHEMICAL --dataset-name <name> --outer-k 10`
+
 `python PrepareDatasets.py DATA/SOCIAL_1 --dataset-name <name> --use-one --outer-k 10`
+
 `python PrepareDatasets.py DATA/SOCIAL_DEGREE --dataset-name <name> --use-degree --outer-k 10`
 
-Where `<name>` is the name of the dataset. 
+Where `<name>` is the name of the dataset. Then, substitute the split (json) files with the ones provided in the `data_splits` folder.
 
 Please note that dataset folders should be organized as follows:
 
@@ -45,5 +43,5 @@ Where `<config>` is your config file (e.g. config_BaselineChemical.yml), and `<n
 
 ### Troubleshooting
 
-The installation of Pytorch Geometric depends on other libraries (torch_scatter, torch_cluster, torch_sparse) that have to be installed separately and before torch_geometric. Do not use pip install -r requirements.txt because it will not work. It is not possible at the moment to further simplify this initial setup.
+The installation of Pytorch Geometric depends on other libraries (torch_scatter, torch_cluster, torch_sparse) that have to be installed separately and before torch_geometric. Do not use pip install -r requirements.txt because it will not work. Please refer to the [official instructions](https://github.com/rusty1s/pytorch_geometric) to install the required libraries.
 
