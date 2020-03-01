@@ -16,13 +16,13 @@ class GIN(torch.nn.Module):
         self.config = config
         self.dropout = config['dropout']
         self.embeddings_dim = [config['hidden_units'][0]] + config['hidden_units']
-        self.no_layers = len(self.embeddings_dim)
+        self.num_layers = len(self.embeddings_dim)
         self.first_h = []
         self.nns = []
         self.convs = []
         self.linears = []
         self.ga_heads = config['ga_heads']
-        self.ga_every_layer = config['ga_every_layer']
+        self.ga_concat_first = config['ga_concat_first']
 
         train_eps = config['train_eps']
         if config['aggregation'] == 'sum':
@@ -30,60 +30,82 @@ class GIN(torch.nn.Module):
         elif config['aggregation'] == 'mean':
             self.pooling = global_mean_pool
 
+        final_output_size = 0
         for layer, out_emb_dim in enumerate(self.embeddings_dim):
 
             if layer == 0:
                 self.first_h = Sequential(Linear(dim_features, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU(),
                                     Linear(out_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU())
-                self.linears.append(Linear(out_emb_dim, dim_target))
+                if self.ga_concat_first:
+                    final_output_size += out_emb_dim
+                else:
+                    self.linears.append(Linear(out_emb_dim, dim_target))
+                    
             else:
                 input_emb_dim = self.embeddings_dim[layer-1]
                 self.nns.append(Sequential(Linear(input_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU(),
                                       Linear(out_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU()))
                 self.convs.append(GINConv(self.nns[-1], train_eps=train_eps))  # Eq. 4.2
-                
-                self.linears.append(Linear(out_emb_dim, dim_target))
-            
+                if self.ga_concat_first:
+                    final_output_size += out_emb_dim
+                else:
+                    self.linears.append(Linear(out_emb_dim, dim_target))
+        
+        if self.ga_concat_first:
+            self.linears = [Linear(final_output_size, dim_target)]
 
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
         self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
-        if self.ga_heads > 0:
+        if self.ga_heads > 0 and self.ga_concat_first == False:
             print('Creating GIN model with {} GA heads'.format(self.ga_heads))
-            if self.ga_every_layer:
-                print('Performing GA every layer')
-                self.selfatt = [SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
-                                             dropout_keep_prob=1 - self.dropout) for _ in range(self.no_layers)]
-            else:
-                self.selfatt = SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim, dropout_keep_prob=1-self.dropout)
-                self.selfatt_linear = Linear(out_emb_dim, dim_target)
+            print('Performing GA every layer')
+            self.selfatt = [SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
+                                             dropout_keep_prob=1 - self.dropout) for _ in range(self.num_layers)]
+        elif self.ga_heads > 0 and self.ga_concat_first == True:
+            print('Creating GIN model with {} GA heads'.format(self.ga_heads))
+            print('Performing GA - concat first')
+            self.selfatt = SelfAttention(num_heads=self.ga_heads, model_dim=final_output_size,
+                                         dropout_keep_prob=1 - self.dropout)
+
 
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
 
         out = 0
-
-        for layer in range(self.no_layers):
-            if layer == 0:
-                x = self.first_h(x)
-
-                if self.ga_heads > 0 and self.ga_every_layer is True:
-                    dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
-                    dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
-                    x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-                out += F.dropout(self.pooling(self.linears[layer](x), batch), p=self.dropout)
-            else:
-                # Layer l ("convolution" layer)
-                x = self.convs[layer-1](x, edge_index)
-                if self.ga_heads > 0 and self.ga_every_layer is True:
-                    dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
-                    dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
-                    x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-                out += F.dropout(self.linears[layer](self.pooling(x, batch)), p=self.dropout, training=self.training)
-
-        if self.ga_heads > 0 and self.ga_every_layer is False:
-            dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+        
+        if self.ga_concat_first and self.ga_heads > 0:
+            per_layer_outputs = []
+            for layer in range(self.num_layers):
+                if layer == 0:
+                    x = self.first_h(x)
+                else:
+                    # Layer l ("convolution" layer)
+                    x = self.convs[layer - 1](x, edge_index)
+                per_layer_outputs.append(x)
+            concat_x = torch.cat(per_layer_outputs, dim=-1)
+            dense_x, valid_mask = torch_geometric.utils.to_dense_batch(concat_x, batch=batch, fill_value=-1)
             dense_x = self.selfatt(dense_x, attn_mask=valid_mask.float())
-            gathered_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-            out += F.dropout(self.selfatt_linear(self.pooling(gathered_x, batch)), p=self.dropout, training=self.training)
+            concat_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(concat_x.shape)
+            out += F.dropout(self.pooling(self.linears[0](concat_x), batch), p=self.dropout)
+        
+        else:
+            for layer in range(self.num_layers):
+                if layer == 0:
+                    x = self.first_h(x)
+    
+                    if self.ga_heads > 0:
+                        dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+                        dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
+                        x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+                    out += F.dropout(self.pooling(self.linears[layer](x), batch), p=self.dropout)
+                else:
+                    # Layer l ("convolution" layer)
+                    x = self.convs[layer-1](x, edge_index)
+                    if self.ga_heads > 0:
+                        dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+                        dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
+                        x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+                    out += F.dropout(self.linears[layer](self.pooling(x, batch)), p=self.dropout, training=self.training)
+
         return out
