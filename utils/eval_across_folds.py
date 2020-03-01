@@ -1,6 +1,7 @@
 import json
 from argparse import ArgumentParser
 import glob
+import numpy as np
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -16,18 +17,18 @@ if __name__ == '__main__':
     for config_id in range(1, num_config + 1):
         config_result_jsons = glob.glob(f'{results_dir}/GIN_NCI1_assessment/*/*/HOLDOUT_MS/config_{config_id}/config_results.json')
         count = 0
-        val_sum = 0
+        values = []
         for json_path in config_result_jsons:
             with open(json_path, 'r') as file:
                 obj = json.load(file)
             count += 1
-            val_sum += obj['VL_score']
+            values.append(obj['VL_score'])
         if count > 0:
             config_values[config_id] = obj['config']
-            results[config_id] = (val_sum/count, count)
+            results[config_id] = (np.mean(values), np.std(values), count)
     
     sorted_configs = [(k, v) for k, v in sorted(results.items(), key=lambda item: item[1][0], reverse=True)]
     for config_id, results in sorted_configs:
-        print(f'Config id: {config_id}: {results[0]} (count: {results[1]})')
+        print(f'Config id: {config_id}: {results[0]} std: {results[1]} (count: {results[2]})')
         print(config_values[config_id])
         print()
