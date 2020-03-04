@@ -5,9 +5,6 @@ device:
 ga_heads:
   - 1
   - 8
-ga_every_layer:
-  - false
-  - true
 ga_recursive:
   - false
   - true
