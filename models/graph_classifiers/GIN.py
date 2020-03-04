@@ -22,7 +22,6 @@ class GIN(torch.nn.Module):
         self.convs = []
         self.linears = []
         self.ga_heads = config['ga_heads']
-        self.ga_every_layer = config['ga_every_layer']
         self.ga_recursive = config['ga_recursive']
 
         train_eps = config['train_eps']
@@ -51,13 +50,13 @@ class GIN(torch.nn.Module):
         self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
         if self.ga_heads > 0:
             print('Creating GIN model with {} GA heads'.format(self.ga_heads))
-            if self.ga_every_layer:
-                print('Performing GA every layer')
-                self.selfatt = [SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
-                                             dropout_keep_prob=1 - self.dropout) for _ in range(self.no_layers)]
+            if self.ga_recursive:
+                print('Applying GA recursively every layer')
             else:
-                self.selfatt = SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim, dropout_keep_prob=1-self.dropout)
-                self.selfatt_linear = Linear(out_emb_dim, dim_target)
+                print('Applying GA every layer, but not recursively')
+            self.selfatt = [SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
+                                             dropout_keep_prob=1 - self.dropout) for _ in range(self.no_layers)]
+            
 
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
@@ -68,7 +67,7 @@ class GIN(torch.nn.Module):
             if layer == 0:
                 x = self.first_h(x)
 
-                if self.ga_heads > 0 and self.ga_every_layer is True:
+                if self.ga_heads > 0:
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
                     possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
@@ -80,7 +79,7 @@ class GIN(torch.nn.Module):
             else:
                 # Layer l ("convolution" layer)
                 x = self.convs[layer-1](x, edge_index)
-                if self.ga_heads > 0 and self.ga_every_layer is True:
+                if self.ga_heads > 0:
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
                     possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
@@ -90,9 +89,4 @@ class GIN(torch.nn.Module):
                     possibly_attended_x = x
                 out += F.dropout(self.linears[layer](self.pooling(possibly_attended_x, batch)), p=self.dropout, training=self.training)
 
-        if self.ga_heads > 0 and self.ga_every_layer is False:
-            dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
-            dense_x = self.selfatt(dense_x, attn_mask=valid_mask.float())
-            gathered_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-            out += F.dropout(self.selfatt_linear(self.pooling(gathered_x, batch)), p=self.dropout, training=self.training)
         return out
