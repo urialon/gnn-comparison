@@ -8,6 +8,9 @@ ga_heads:
 ga_every_layer:
   - false
   - true
+ga_recursive:
+  - false
+  - true
 batch_size:
   - 32
   - 128
