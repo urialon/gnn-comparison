@@ -5,7 +5,7 @@ device:
 ga_heads:
   - 1
   - 8
-ga_concat_first:
+ga_every_layer:
   - false
   - true
 batch_size:
