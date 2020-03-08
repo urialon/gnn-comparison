@@ -4,6 +4,8 @@ import json
 import numpy as np
 import concurrent.futures
 
+import torch
+
 from config.base import Config
 from evaluation.dataset_getter import DatasetGetter
 from log import Logger
@@ -120,6 +122,7 @@ class KFoldAssessment:
 
         training_scores, test_scores = [], []
 
+        torch.set_num_threads(self.outer_processes)
         # Mitigate bad random initializations
         for i in range(3):
             training_score, test_score = experiment.run_test(dataset_getter, logger, other)
