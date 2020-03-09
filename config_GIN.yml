@@ -4,8 +4,7 @@ device:
   - cpu
 ga_heads:
   - 1
-  - 8
-ga_recursive:
+concat_attend:
   - false
   - true
 batch_size:

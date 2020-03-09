@@ -22,7 +22,7 @@ class GIN(torch.nn.Module):
         self.convs = []
         self.linears = []
         self.ga_heads = config['ga_heads']
-        self.ga_recursive = config['ga_recursive']
+        self.concat_attend = config['concat_attend']
 
         train_eps = config['train_eps']
         if config['aggregation'] == 'sum':
@@ -35,26 +35,32 @@ class GIN(torch.nn.Module):
             if layer == 0:
                 self.first_h = Sequential(Linear(dim_features, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU(),
                                     Linear(out_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU())
-                self.linears.append(Linear(out_emb_dim, dim_target))
+                if not self.concat_attend:
+                    self.linears.append(Linear(out_emb_dim, dim_target))
             else:
                 input_emb_dim = self.embeddings_dim[layer-1]
                 self.nns.append(Sequential(Linear(input_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU(),
                                       Linear(out_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU()))
                 self.convs.append(GINConv(self.nns[-1], train_eps=train_eps))  # Eq. 4.2
                 
-                self.linears.append(Linear(out_emb_dim, dim_target))
+                if not self.concat_attend:
+                    self.linears.append(Linear(out_emb_dim, dim_target))
             
 
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
-        self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
+        if not self.concat_attend:
+            self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
         if self.ga_heads > 0:
             print('Creating GIN model with {} GA heads'.format(self.ga_heads))
-            if self.ga_recursive:
-                print('Applying GA recursively every layer')
+            if self.concat_attend:
+                print('Concat first, then attend')
+                self.selfatt = SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim * self.no_layers,
+                                             dropout_keep_prob=1 - self.dropout)
+                self.linear = Linear(out_emb_dim * self.no_layers, dim_target)
             else:
-                print('Applying GA every layer, but not recursively')
-            self.selfatt = torch.nn.ModuleList([SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
+                print('Attending every layer')
+                self.selfatt = torch.nn.ModuleList([SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
                                              dropout_keep_prob=1 - self.dropout) for _ in range(self.no_layers)])
             
 
@@ -62,31 +68,41 @@ class GIN(torch.nn.Module):
         x, edge_index, batch = data.x, data.edge_index, data.batch
 
         out = 0
-
+        
+        layer_activations = []
         for layer in range(self.no_layers):
             if layer == 0:
                 x = self.first_h(x)
 
-                if self.ga_heads > 0:
-                    dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
-                    dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
-                    possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-                    if self.ga_recursive:
-                        x = possibly_attended_x
+                if self.concat_attend and self.ga_heads > 0:
+                    layer_activations.append(x)
                 else:
-                    possibly_attended_x = x
-                out += F.dropout(self.pooling(self.linears[layer](possibly_attended_x), batch), p=self.dropout)
+                    if self.ga_heads > 0:
+                        dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+                        dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
+                        possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+                    else:
+                        possibly_attended_x = x
+                    out += F.dropout(self.pooling(self.linears[layer](possibly_attended_x), batch), p=self.dropout)
             else:
                 # Layer l ("convolution" layer)
                 x = self.convs[layer-1](x, edge_index)
-                if self.ga_heads > 0:
-                    dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
-                    dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
-                    possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-                    if self.ga_recursive:
-                        x = possibly_attended_x
+                if self.concat_attend and self.ga_heads > 0:
+                    layer_activations.append(x)
                 else:
-                    possibly_attended_x = x
-                out += F.dropout(self.linears[layer](self.pooling(possibly_attended_x, batch)), p=self.dropout, training=self.training)
-
+                    if self.ga_heads > 0:
+                        dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
+                        dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
+                        possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+                        if self.concat_attend:
+                            layer_activations.append(possibly_attended_x)
+                    else:
+                        possibly_attended_x = x
+                    out += F.dropout(self.linears[layer](self.pooling(possibly_attended_x, batch)), p=self.dropout, training=self.training)
+        if self.concat_attend:
+            concat_outputs = torch.cat(layer_activations, dim=-1)
+            dense_concat_x, valid_mask = torch_geometric.utils.to_dense_batch(concat_outputs, batch=batch, fill_value=-1)
+            dense_concat_x = self.selfatt(dense_concat_x, attn_mask=valid_mask.float())
+            attended = torch.masked_select(dense_concat_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+            out += F.dropout(self.pooling(self.linear(attended), batch), p=self.dropout)
         return out
