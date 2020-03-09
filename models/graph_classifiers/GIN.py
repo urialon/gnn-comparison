@@ -54,8 +54,8 @@ class GIN(torch.nn.Module):
                 print('Applying GA recursively every layer')
             else:
                 print('Applying GA every layer, but not recursively')
-            self.selfatt = [SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
-                                             dropout_keep_prob=1 - self.dropout) for _ in range(self.no_layers)]
+            self.selfatt = torch.nn.ModuleList([SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
+                                             dropout_keep_prob=1 - self.dropout) for _ in range(self.no_layers)])
             
 
     def forward(self, data):
