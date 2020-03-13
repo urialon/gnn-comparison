@@ -106,6 +106,6 @@ class GIN(torch.nn.Module):
             concat_outputs = torch.cat(layer_activations, dim=-1)
             dense_concat_x, valid_mask = torch_geometric.utils.to_dense_batch(concat_outputs, batch=batch, fill_value=-1)
             dense_concat_x = self.selfatt(dense_concat_x, attn_mask=valid_mask.float())
-            attended = torch.masked_select(dense_concat_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
+            attended = torch.masked_select(dense_concat_x, torch.unsqueeze(valid_mask, -1)).reshape(concat_outputs.shape)
             out += F.dropout(self.pooling(self.linear(attended), batch), p=self.dropout)
         return out
