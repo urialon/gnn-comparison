@@ -49,18 +49,15 @@ class GIN(torch.nn.Module):
 
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
-        if self.concat_attend:
-            self.linear = Linear(out_emb_dim * self.no_layers, dim_target)
-        else:
+        if not self.concat_attend:
             self.linears = torch.nn.ModuleList(self.linears)  # has got one more for initial input
-            
         if self.ga_heads > 0:
             print('Creating GIN model with {} GA heads'.format(self.ga_heads))
             if self.concat_attend:
                 print('Concat first, then attend')
                 self.selfatt = SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim * self.no_layers,
                                              dropout_keep_prob=1 - self.dropout)
-                
+                self.linear = Linear(out_emb_dim * self.no_layers, dim_target)
             else:
                 print('Attending every layer')
                 self.selfatt = torch.nn.ModuleList([SelfAttention(num_heads=self.ga_heads, model_dim=out_emb_dim,
