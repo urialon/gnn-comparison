@@ -23,10 +23,10 @@ class SelfAttention(torch.nn.Module):
         tiled_inputs = batched_inputs.unsqueeze(1).repeat(1, self.num_heads, 1, 1)
         outputs = self._scaled_dot_product(qs, tiled_inputs, tiled_inputs, attn_mask)  # (batch, num_heads, max_contexts, value_dim)
         outputs = self._concat_heads(outputs)  # (batch, max_contexts, value_dim * num_heads)
-        outputs = self.out_layer(outputs)  # (batch, max_contexts, model_dim)
-        outputs = self.relu(outputs)  # (batch, max_contexts, model_dim)
-
-        outputs = self.dropout(outputs)
+        if self.num_heads > 1:
+            outputs = self.out_layer(outputs)  # (batch, max_contexts, model_dim)
+            outputs = self.relu(outputs)  # (batch, max_contexts, model_dim)
+            #outputs = self.dropout(outputs)
         outputs = torch.cat([outputs, batched_inputs], dim=-1) # (batch, max_contexts, 2 * model_dim)
         outputs = self.out_layer2(outputs) # (batch, max_contexts, model_dim)c
         outputs = self.relu(outputs)  # (batch, max_contexts, model_dim)
