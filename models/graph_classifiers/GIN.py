@@ -24,6 +24,8 @@ class GIN(torch.nn.Module):
         self.ga_heads = config['ga_heads']
         self.every_layer = config['every_layer']
         self.last_layer_complete = config['last_layer_complete']
+        if self.last_layer_complete:
+            print('Using LastLayerComplete')
 
         train_eps = config['train_eps']
         if config['aggregation'] == 'sum':
