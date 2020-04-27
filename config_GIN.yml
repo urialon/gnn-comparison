@@ -7,6 +7,8 @@ ga_heads:
 every_layer:
   - false
   - true
+last_layer_complete:
+  - false
 batch_size:
   - 32
   - 128
