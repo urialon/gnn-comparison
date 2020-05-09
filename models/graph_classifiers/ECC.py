@@ -1,4 +1,5 @@
 import torch
+import torch_geometric
 from torch import nn
 from torch.nn import functional as F
 from torch_geometric.nn import MessagePassing, global_mean_pool
@@ -70,6 +71,9 @@ class ECC(nn.Module):
             dim_input = dim_features if i == 0 else dim_embedding
             layer = ECCLayer(dim_input, dim_embedding, dropout=self.dropout)
             self.layers.append(layer)
+        self.last_layer_complete = config['last_layer_complete']
+        if self.last_layer_complete:
+            print('Using LastLayerComplete')
 
         fnet = nn.Sequential(nn.Linear(1, 16),
                              nn.ReLU(),
@@ -111,6 +115,10 @@ class ECC(nn.Module):
             lap_edge_idx, lap_edge_weights, v_plus_batch = self.get_ecc_conv_parameters(data, layer_no=i)
             edge_index = lap_edge_idx if i != 0 else edge_index
             edge_weight = lap_edge_weights if i != 0 else x.new_ones((edge_index.size(1), ))
+            
+            if self.last_layer_complete and i == len(self.layers) - 1:
+                block_map = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
+                edge_index, _ = torch_geometric.utils.dense_to_sparse(block_map)
 
             edge_index = edge_index.to(self.config.device)
             edge_weight = edge_weight.to(self.config.device)

@@ -93,6 +93,9 @@ class DiffPool(nn.Module):
         dim_embedding_MLP = config['dim_embedding_MLP']  # hidden neurons of last 2 MLP layers
 
         self.num_diffpool_layers = num_diffpool_layers
+        self.last_layer_complete = config['last_layer_complete']
+        if self.last_layer_complete:
+            print('Using LastLayerComplete')
 
         # Reproduce paper choice about coarse factor
         coarse_factor = 0.1 if num_diffpool_layers == 1 else 0.25
@@ -132,6 +135,9 @@ class DiffPool(nn.Module):
         for i in range(self.num_diffpool_layers):
             if i != 0:
                 mask = None
+            if self.last_layer_complete and i == self.num_diffpool_layers - 1:
+                adj = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
+            
 
             x, adj, l, e = self.diffpool_layers[i](x, adj, mask)  # x has shape (batch, MAX_no_nodes, feature_size)
             x_all.append(torch.max(x, dim=1)[0])

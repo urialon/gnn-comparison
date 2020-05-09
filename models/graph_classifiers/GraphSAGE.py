@@ -1,4 +1,5 @@
 import torch
+import torch_geometric
 from torch import nn
 from torch.nn import functional as F
 
@@ -39,7 +40,12 @@ class GraphSAGE(nn.Module):
         x_all = []
 
         for i, layer in enumerate(self.layers):
-            x = layer(x, edge_index)
+            if self.last_layer_complete and i == len(self.layers) - 1:
+                block_map = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
+                edges, _ = torch_geometric.utils.dense_to_sparse(block_map)
+            else:
+                edges = edge_index
+            x = layer(x, edges)
             if self.aggregation == 'max':
                 x = torch.relu(self.fc_max(x))
             x_all.append(x)
