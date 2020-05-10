@@ -1,6 +1,7 @@
 from math import ceil
 
 import torch
+import torch_geometric
 from torch import nn
 from torch.nn import functional as F
 from torch_geometric.nn import DenseSAGEConv, dense_diff_pool
@@ -137,7 +138,8 @@ class DiffPool(nn.Module):
                 mask = None
             if self.last_layer_complete and i == self.num_diffpool_layers - 1:
                 adj = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
-            
+                sparse_adj = torch_geometric.utils.dense_to_sparse(adj)
+                adj = to_dense_adj(sparse_adj, batch=batch)
 
             x, adj, l, e = self.diffpool_layers[i](x, adj, mask)  # x has shape (batch, MAX_no_nodes, feature_size)
             x_all.append(torch.max(x, dim=1)[0])
