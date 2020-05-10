@@ -138,7 +138,7 @@ class DiffPool(nn.Module):
                 mask = None
             if self.last_layer_complete and i == self.num_diffpool_layers - 1:
                 adj = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
-                sparse_adj = torch_geometric.utils.dense_to_sparse(adj)
+                sparse_adj, _ = torch_geometric.utils.dense_to_sparse(adj)
                 adj = to_dense_adj(sparse_adj, batch=batch)
 
             x, adj, l, e = self.diffpool_layers[i](x, adj, mask)  # x has shape (batch, MAX_no_nodes, feature_size)
