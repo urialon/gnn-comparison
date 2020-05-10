@@ -16,6 +16,9 @@ class GraphSAGE(nn.Module):
         num_layers = config['num_layers']
         dim_embedding = config['dim_embedding']
         self.aggregation = config['aggregation']  # can be mean or max
+        self.last_layer_complete = config['last_layer_complete']
+        if self.last_layer_complete:
+            print('Using LastLayerComplete')
 
         if self.aggregation == 'max':
             self.fc_max = nn.Linear(dim_embedding, dim_embedding)
