@@ -142,8 +142,8 @@ class DiffPool(nn.Module):
 
             x, adj, l, e = self.diffpool_layers[i](x, adj, mask)  # x has shape (batch, MAX_no_nodes, feature_size)
             if self.last_layer_complete and i == self.num_diffpool_layers - 1 and self.last_layer_complete_mean:
-                num_nodes_in_graph_per_node = mask.sum(dim=1)  # (nodes, )
-                x = x / num_nodes_in_graph_per_node.unsqueeze(-1)
+                num_nodes_in_graph_per_node = adj.size(1)
+                x = x / num_nodes_in_graph_per_node
             x_all.append(torch.max(x, dim=1)[0])
 
             l_total += l
