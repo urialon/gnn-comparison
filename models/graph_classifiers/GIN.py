@@ -24,6 +24,7 @@ class GIN(torch.nn.Module):
         self.ga_heads = config['ga_heads']
         self.every_layer = config['every_layer']
         self.last_layer_complete = config['last_layer_complete']
+        self.last_layer_complete_mean = config['last_layer_complete_mean']
         if self.last_layer_complete:
             print('Using LastLayerComplete')
 
@@ -81,12 +82,14 @@ class GIN(torch.nn.Module):
                 out += F.dropout(self.pooling(self.linears[layer](possibly_attended_x), batch), p=self.dropout)
             else:
                 # Layer l ("convolution" layer)
+                edges = edge_index
                 if self.last_layer_complete and layer == self.no_layers - 1:
                     block_map = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
                     edges, _ = torch_geometric.utils.dense_to_sparse(block_map)
-                else:
-                    edges = edge_index
                 x = self.convs[layer-1](x, edges)
+                if self.last_layer_complete and layer == self.no_layers - 1 and self.last_layer_complete_mean:
+                    num_nodes_in_graph_per_node = block_map.sum(dim=1) # (nodes, )
+                    x = x / num_nodes_in_graph_per_node.unsqueeze(-1) 
                 if self.ga_heads > 0 and self.every_layer:
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())

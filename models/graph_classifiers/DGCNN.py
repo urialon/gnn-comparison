@@ -29,6 +29,7 @@ class DGCNN(nn.Module):
         self.embedding_dim = config['embedding_dim']
         self.num_layers = config['num_layers']
         self.last_layer_complete = config['last_layer_complete']
+        self.last_layer_complete_mean = config['last_layer_complete_mean']
         if self.last_layer_complete:
             print('Using LastLayerComplete')
 
@@ -66,12 +67,14 @@ class DGCNN(nn.Module):
         hidden_repres = []
 
         for i, conv in enumerate(self.convs):
+            edges = edge_index
             if self.last_layer_complete and i == len(self.convs) - 1:
                 block_map = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
                 edges, _ = torch_geometric.utils.dense_to_sparse(block_map)
-            else:
-                edges = edge_index
             x = torch.tanh(conv(x, edges))
+            if self.last_layer_complete and i == len(self.convs) - 1 and self.last_layer_complete_mean:
+                num_nodes_in_graph_per_node = block_map.sum(dim=1)  # (nodes, )
+                x = x / num_nodes_in_graph_per_node.unsqueeze(-1)
             hidden_repres.append(x)
 
         # apply sortpool

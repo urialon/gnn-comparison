@@ -17,6 +17,7 @@ class GraphSAGE(nn.Module):
         dim_embedding = config['dim_embedding']
         self.aggregation = config['aggregation']  # can be mean or max
         self.last_layer_complete = config['last_layer_complete']
+        self.last_layer_complete_mean = config['last_layer_complete_mean']
         if self.last_layer_complete:
             print('Using LastLayerComplete')
 
@@ -43,14 +44,16 @@ class GraphSAGE(nn.Module):
         x_all = []
 
         for i, layer in enumerate(self.layers):
+            edges = edge_index
             if self.last_layer_complete and i == len(self.layers) - 1:
                 block_map = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
                 edges, _ = torch_geometric.utils.dense_to_sparse(block_map)
-            else:
-                edges = edge_index
             x = layer(x, edges)
             if self.aggregation == 'max':
                 x = torch.relu(self.fc_max(x))
+            if self.last_layer_complete and i == len(self.layers) - 1 and self.last_layer_complete_mean:
+                num_nodes_in_graph_per_node = block_map.sum(dim=1)  # (nodes, )
+                x = x / num_nodes_in_graph_per_node.unsqueeze(-1)
             x_all.append(x)
 
         x = torch.cat(x_all, dim=1)

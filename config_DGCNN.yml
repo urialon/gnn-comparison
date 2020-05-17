@@ -6,6 +6,9 @@ batch_size:
   - 50
 last_layer_complete:
   - false
+last_layer_complete_mean:
+  - true
+  - false
 dense_dim:
   - 128
 k:

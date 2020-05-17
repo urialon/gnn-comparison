@@ -9,6 +9,9 @@ every_layer:
   - true
 last_layer_complete:
   - false
+last_layer_complete_mean:
+  - true
+  - false
 batch_size:
   - 32
   - 128
