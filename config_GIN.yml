@@ -3,10 +3,9 @@ model:
 device:
   - cpu
 ga_heads:
-  - 1
+  - 0
 every_layer:
   - false
-  - true
 last_layer_complete:
   - false
 last_layer_complete_mean:
