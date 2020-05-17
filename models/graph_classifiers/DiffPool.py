@@ -95,6 +95,7 @@ class DiffPool(nn.Module):
 
         self.num_diffpool_layers = num_diffpool_layers
         self.last_layer_complete = config['last_layer_complete']
+        self.last_layer_complete_mean = config['last_layer_complete_mean']
         if self.last_layer_complete:
             print('Using LastLayerComplete')
 
@@ -137,11 +138,12 @@ class DiffPool(nn.Module):
             if i != 0:
                 mask = None
             if self.last_layer_complete and i == self.num_diffpool_layers - 1:
-                adj = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
-                sparse_adj, _ = torch_geometric.utils.dense_to_sparse(adj)
-                adj = to_dense_adj(sparse_adj, batch=batch)
+                adj = torch.ones_like(adj)
 
             x, adj, l, e = self.diffpool_layers[i](x, adj, mask)  # x has shape (batch, MAX_no_nodes, feature_size)
+            if self.last_layer_complete and i == self.num_diffpool_layers - 1 and self.last_layer_complete_mean:
+                num_nodes_in_graph_per_node = mask.sum(dim=1)  # (nodes, )
+                x = x / num_nodes_in_graph_per_node.unsqueeze(-1)
             x_all.append(torch.max(x, dim=1)[0])
 
             l_total += l
