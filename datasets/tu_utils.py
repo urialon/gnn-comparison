@@ -1,6 +1,7 @@
 from collections import defaultdict
 import numpy as np
 import networkx as nx
+import statistics as stats
 
 from .graph import Graph
 from utils.utils import one_hot
@@ -27,12 +28,16 @@ def parse_tu_data(name, raw_dir):
     node_attrs = defaultdict(list)
     edge_attrs = defaultdict(list)
 
+    
+
     with open(indicator_path, "r") as f:
         for i, line in enumerate(f.readlines(), 1):
             line = line.rstrip("\n")
             graph_id = int(line)
             indicator.append(graph_id)
             graph_nodes[graph_id].append(i)
+    
+    num_nodes = [len(nodes) for _, nodes in graph_nodes.items()]
 
     with open(edges_path, "r") as f:
         for i, line in enumerate(f.readlines(), 1):
@@ -41,6 +46,34 @@ def parse_tu_data(name, raw_dir):
             edge_indicator.append(edge)
             graph_id = indicator[edge[0]]
             graph_edges[graph_id].append(edge)
+            
+    num_edges = [len(edges)/2 for _, edges in graph_edges.items()]
+
+    failed = 0
+    diameters = []
+    for _, edges in graph_edges.items():
+        g = nx.Graph()
+        for edge_source, edge_target in edges:
+            g.add_edge(edge_source, edge_target)
+        try:
+            diameters.append(nx.diameter(g))
+        except Exception:
+            failed += 1
+
+    print('Failed to compute diameter: ', failed)
+    print('Nodes - average: ', stats.mean(num_nodes))
+    print('Nodes - stdev: ', stats.stdev(num_nodes))
+    print('Edges - average: ', stats.mean(num_edges))
+    print('Edges - stdev: ', stats.stdev(num_edges))
+
+    print('Max diameter: ', max(diameters))
+    print('Mean diameter: ', stats.mean(diameters))
+    print('stddev: ', stats.stdev(diameters))
+
+    percentiles = range(10, 110, 10)
+    percentile_results = np.percentile(diameters, percentiles)
+    for i, res in zip(percentiles, percentile_results):
+        print('Diameters - {} percentile: {}'.format(i, res))
 
     if node_labels_path.exists():
         with open(node_labels_path, "r") as f:
