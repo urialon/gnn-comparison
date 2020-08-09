@@ -45,9 +45,9 @@ class GIN(torch.nn.Module):
                 self.nns.append(Sequential(Linear(input_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU(),
                                       Linear(out_emb_dim, out_emb_dim), BatchNorm1d(out_emb_dim), ReLU()))
                 self.convs.append(GINConv(self.nns[-1], train_eps=train_eps))  # Eq. 4.2
-                
+
                 self.linears.append(Linear(out_emb_dim, dim_target))
-            
+
 
         self.nns = torch.nn.ModuleList(self.nns)
         self.convs = torch.nn.ModuleList(self.convs)
@@ -76,20 +76,20 @@ class GIN(torch.nn.Module):
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
                     possibly_attended_x = torch.masked_select(dense_x, torch.unsqueeze(valid_mask, -1)).reshape(x.shape)
-                    
+
                 else:
                     possibly_attended_x = x
                 out += F.dropout(self.pooling(self.linears[layer](possibly_attended_x), batch), p=self.dropout)
             else:
                 # Layer l ("convolution" layer)
                 edges = edge_index
-                if self.last_layer_complete and layer == self.no_layers - 1:
+                if self.last_layer_complete:
                     block_map = torch.eq(batch.unsqueeze(0), batch.unsqueeze(-1)).int()
                     edges, _ = torch_geometric.utils.dense_to_sparse(block_map)
                 x = self.convs[layer-1](x, edges)
                 if self.last_layer_complete and layer == self.no_layers - 1 and self.last_layer_complete_mean:
                     num_nodes_in_graph_per_node = block_map.sum(dim=1) # (nodes, )
-                    x = x / num_nodes_in_graph_per_node.unsqueeze(-1) 
+                    x = x / num_nodes_in_graph_per_node.unsqueeze(-1)
                 if self.ga_heads > 0 and self.every_layer:
                     dense_x, valid_mask = torch_geometric.utils.to_dense_batch(x, batch=batch, fill_value=-1)
                     dense_x = self.selfatt[layer](dense_x, attn_mask=valid_mask.float())
